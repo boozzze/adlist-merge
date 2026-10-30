@@ -1,0 +1,53 @@
+name: build-lists
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "build.py"
+      - ".github/workflows/build.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-lists
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build lists
+        run: python build.py
+
+      - name: Show result
+        run: |
+          wc -l out/full.txt out/fit.txt
+
+      - name: Publish to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="data"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --title "Latest lists" \
+              --notes "Автосборка из всех источников" \
+              --latest
+          fi
+          gh release upload "$tag" out/full.txt out/fit.txt --clobber
+          gh release edit "$tag" --latest \
+            --notes "Обновлено: $(date -u '+%Y-%m-%d %H:%M UTC')
+          - full.txt — все источники
+          - fit.txt — облегчённый набор для роутеров на 256–512 МБ"
